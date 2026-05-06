@@ -147,11 +147,292 @@
         </div>
       </div>
     </div>
-
-    <!-- 仿真设计界面（保持不变，省略...） -->
     <div v-else class="simulation-designer-container">
-      <!-- 原有内容不变，此处省略 -->
+      <!-- 顶部工程信息栏 -->
+      <div class="designer-header-bar">
+        <button @click="backToProjectList" class="back-btn">← 返回工程列表</button>
+        <div class="project-context">
+          <span class="project-name">{{ selectedProject.name }}</span>
+          <span v-if="isReadOnly" class="readonly-badge">只读模式</span>
+          <span v-if="currentInstance" class="instance-badge">实例: {{ currentInstance.id }}</span>
+        </div>
+        <div class="lock-status" v-if="selectedProject.lockedBy && selectedProject.lockedBy === currentUser">
+          <span class="lock-icon">🔒</span> 您正在编辑此工程
+        </div>
+        <div class="lock-status" v-else-if="selectedProject.lockedBy">
+          <span class="lock-icon">🔒</span> {{ selectedProject.lockedBy }} 正在编辑
+        </div>
+      </div>
+
+      <!-- 仿真设计主界面（移除测试用例列表） -->
+      <div class="container simulation-design">
+        <!-- 左列 - 仅保留资源列表和节点列表 -->
+        <div class="left-column">
+          <!-- 测试资源列表 -->
+          <div class="panel left-bottom-panel">
+            <div class="panel-header">
+              测试资源列表
+              <button @click="flushResources" class="flush-btn">🔃</button>
+            </div>
+            <input
+              type="text"
+              class="search-box"
+              v-model="resourceSearch"
+              placeholder="搜索测试资源..."
+            />
+            <div class="panel-content" id="resourceList">
+              <div
+                v-for="resource in filteredResources"
+                :key="resource.id"
+                class="node-item"
+                :class="{ 'draggable-disabled': isReadOnly }"
+                draggable="!isReadOnly"
+                @dragstart="isReadOnly ? null : dragStart($event, resource)"
+              >
+                <div
+                  class="node-icon"
+                  :style="{ backgroundColor: resource.color }"
+                >
+                  {{ resource.icon }}
+                </div>
+                <div class="node-details">
+                  <div class="node-name">{{ resource.name }}</div>
+                  <div class="node-type">{{ resource.type }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 仿真节点列表 -->
+          <div class="panel">
+            <div class="panel-header">仿真节点列表</div>
+            <input
+              type="text"
+              class="search-box"
+              v-model="nodeSearch"
+              placeholder="搜索仿真节点..."
+            />
+            <div class="panel-content" id="simulationNodeList">
+              <div
+                v-for="node in filteredNodes"
+                :key="node.id"
+                class="node-item"
+              >
+                <div
+                  class="node-icon"
+                  :style="{ backgroundColor: node.color }"
+                >
+                  N
+                </div>
+                <div class="node-details">
+                  <div class="node-name">{{ node.ip }}</div>
+                  <div :class="['node-type', node.status]">
+                    {{ node.status === 'online' ? '在线' : '离线' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中列：仿真设计画布 -->
+        <div class="middle-column">
+          <div class="design-panel">
+            <div class="design-header">仿真设计界面</div>
+
+            <!-- 仿真控制面板 -->
+            <div class="sim-control-panel">
+              <div class="control-group">
+                <span class="control-label">事件设置:</span>
+                <input
+                  type="text"
+                  class="control-input"
+                  v-model="eventSetting"
+                  placeholder="输入事件"
+                  :disabled="isReadOnly"
+                />
+              </div>
+              <div class="control-group">
+                <span class="control-label">倍速:</span>
+                <input
+                  type="number"
+                  class="control-input"
+                  v-model="speed"
+                  min="0.1"
+                  max="10"
+                  step="0.1"
+                  :disabled="isReadOnly"
+                />
+              </div>
+              <button class="control-btn" @click="initializeSim" :disabled="isReadOnly">初始化</button>
+              <button class="control-btn start" @click="startSim" :disabled="isReadOnly">启动</button>
+              <button class="control-btn pause" @click="pauseSim" :disabled="isReadOnly">暂停</button>
+              <button class="control-btn" @click="resumeSim" :disabled="isReadOnly">恢复</button>
+              <button class="control-btn stop" @click="stopSim" :disabled="isReadOnly">停止</button>
+              <div class="sim-time-display">{{ simTime.toFixed(2) }} s</div>
+              <div>
+                <span :class="['sim-status', simStatus.icon]"></span>
+                <span>{{ simStatus.text }}</span>
+              </div>
+            </div>
+
+            <div
+              class="design-canvas"
+              id="design-canvas"
+              @dragover.prevent
+              @drop="isReadOnly ? null : dropResource"
+            >
+              <!-- 画布上的模型节点 -->
+              <div
+                v-for="node in canvasNodes"
+                :key="node.id"
+                class="design-node"
+                :style="{ left: node.x + 'px', top: node.y + 'px' }"
+                @mousedown="isReadOnly ? null : startDrag(node, $event)"
+                @click="selectModel(node)"
+              >
+                <div class="design-node-header">
+                  <div class="node-icon" :style="{ backgroundColor: node.color }">
+                    {{ node.icon }}
+                  </div>
+                  {{ node.name }}
+                </div>
+                <div class="design-node-body">{{ node.type }}</div>
+                <div class="node-ports">
+                  <div class="input-ports">
+                    <div class="node-port input-port"></div>
+                  </div>
+                  <div class="output-ports">
+                    <div class="node-port output-port"></div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 连接线 SVG -->
+              <svg
+                id="connectionLayer"
+                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;"
+              >
+                <defs>
+                  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#007bff" />
+                  </marker>
+                </defs>
+                <line
+                  v-for="connection in connections"
+                  :key="connection.id"
+                  :x1="connection.x1"
+                  :y1="connection.y1"
+                  :x2="connection.x2"
+                  :y2="connection.y2"
+                  class="connection"
+                  :class="{ selected: connection.selected }"
+                  marker-end="url(#arrowhead)"
+                />
+              </svg>
+            </div>
+            <div class="design-tools">
+              <button class="tool-btn" @click="clearCanvas" :disabled="isReadOnly">清空画布</button>
+              <button class="tool-btn" @click="saveDesign" :disabled="isReadOnly">保存设计</button>
+              <button class="tool-btn" @click="loadDesign" :disabled="isReadOnly">加载设计</button>
+              <button class="tool-btn primary-btn" @click="runSimulation" :disabled="isReadOnly">
+                运行仿真
+              </button>
+            </div>
+          </div>
+
+          <!-- 日志窗口 -->
+          <div class="monitor-panel">
+            <div class="monitor-header">
+              日志窗口
+              <button class="tool-btn" @click="clearLog">清空</button>
+            </div>
+            <div class="monitor-content" id="log-window">
+              <div
+                v-for="(log, index) in logs"
+                :key="index"
+                :class="['monitor-line', log.type]"
+              >
+                <span class="monitor-timestamp">[{{ log.timestamp }}]</span>
+                {{ log.message }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右列：参数和事件面板 -->
+        <div class="right-column">
+          <div class="panel">
+            <div class="panel-header">模型参数窗口</div>
+            <div class="panel-content" id="model-params">
+              <div v-if="selectedModel">
+                <h3>{{ selectedModel.name }}</h3>
+                <div v-for="(param, key) in selectedModel.params" :key="key" class="param-item">
+                  <label>{{ param.label }}:</label>
+                  <input
+                    type="text"
+                    v-model="param.value"
+                    class="control-input"
+                    style="width: 100%; margin-bottom: 5px;"
+                    :disabled="isReadOnly"
+                  />
+                </div>
+              </div>
+              <p v-else>选择模型以设置参数</p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">时间列表</div>
+            <div class="panel-content">
+              <div id="time-events" class="controls">
+                <button
+                  v-for="event in timeEvents"
+                  :key="event.id"
+                  @click="triggerEvent(event)"
+                  class="tool-btn"
+                  :disabled="isReadOnly"
+                >
+                  {{ event.name }}
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="自定义事件"
+                v-model="customEvent"
+                class="control-input"
+                style="width: 100%; margin-top: 10px;"
+                :disabled="isReadOnly"
+              />
+              <button
+                @click="sendCustomEvent"
+                class="tool-btn primary-btn"
+                style="width: 100%; margin-top: 5px;"
+                :disabled="isReadOnly"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+          <div class="monitor-panel">
+            <div class="monitor-header">
+              数据监控窗口
+              <button class="tool-btn" @click="exportMonitor" :disabled="isReadOnly">导出</button>
+            </div>
+            <div class="monitor-content" id="data-monitor">
+              <div
+                v-for="(data, index) in monitorData"
+                :key="index"
+                :class="['monitor-line', data.type]"
+              >
+                <span class="monitor-timestamp">[{{ data.timestamp }}]</span>
+                {{ data.message }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+
 
     <!-- 新建工程弹窗 -->
     <div v-if="showCreateProject" class="modal-overlay" @click.self="showCreateProject = false">
@@ -489,8 +770,11 @@ export default {
 </script>
 
 <style scoped>
-/* 统一样式（精简版，只保留关键修复） */
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
 .simulation-run-container {
   position: fixed;
@@ -502,12 +786,56 @@ export default {
   font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
   overflow: hidden;
 }
-.bg-decoration { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.gradient-sphere { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.3; animation: float 20s ease-in-out infinite; }
-.sphere-1 { width: 500px; height: 500px; background: radial-gradient(circle, #3b82f6, #06b6d4); top: -200px; right: -100px; }
-.sphere-2 { width: 400px; height: 400px; background: radial-gradient(circle, #8b5cf6, #ec489a); bottom: -150px; left: -150px; animation-delay: -5s; }
-.sphere-3 { width: 300px; height: 300px; background: radial-gradient(circle, #10b981, #06b6d4); top: 50%; left: 50%; transform: translate(-50%, -50%); animation-delay: -10s; }
-@keyframes float { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(30px,20px) scale(1.1); } }
+
+.bg-decoration {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.gradient-sphere {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.3;
+  animation: float 20s ease-in-out infinite;
+}
+
+.sphere-1 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, #3b82f6, #06b6d4);
+  top: -200px;
+  right: -100px;
+}
+
+.sphere-2 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, #8b5cf6, #ec489a);
+  bottom: -150px;
+  left: -150px;
+  animation-delay: -5s;
+}
+
+.sphere-3 {
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, #10b981, #06b6d4);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation-delay: -10s;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, 20px) scale(1.1); }
+}
 
 .glass-panel {
   background: rgba(15, 25, 35, 0.7);
@@ -517,7 +845,7 @@ export default {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
-/* 导航栏 */
+/* ========== 顶部导航栏 ========== */
 .navbar {
   margin: 20px 24px;
   padding: 12px 24px;
@@ -527,22 +855,86 @@ export default {
   z-index: 10;
   position: relative;
 }
-.nav-left { display: flex; align-items: center; gap: 16px; }
-.logo-icon { display: flex; align-items: center; gap: 8px; color: #3b82f6; cursor: pointer; }
-.logo-text { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, #fff, #94a3b8); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.nav-title { font-size: 16px; color: #94a3b8; padding-left: 16px; border-left: 1px solid rgba(255,255,255,0.1); }
-.nav-right { display: flex; align-items: center; gap: 16px; }
-.user-info { display: flex; align-items: center; gap: 8px; }
-.user-name { color: white; font-size: 14px; }
-.user-role { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
-.user-role.super-admin { background: rgba(239,68,68,0.2); color: #ef4444; }
-.user-role.admin { background: rgba(245,158,11,0.2); color: #f59e0b; }
-.user-role.designer { background: rgba(59,130,246,0.2); color: #3b82f6; }
-.user-role.viewer { background: rgba(16,185,129,0.2); color: #10b981; }
-.btn-logout { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 40px; padding: 8px 16px; color: #cbd5e1; cursor: pointer; }
-.btn-logout:hover { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #ef4444; }
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.logo-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #3b82f6;
+  cursor: pointer;
+}
+.logo-text {
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.nav-title {
+  font-size: 16px;
+  color: #94a3b8;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.user-name {
+  color: white;
+  font-size: 14px;
+}
+.user-role {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.user-role.super-admin {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+.user-role.admin {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+.user-role.designer {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+.user-role.viewer {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+.btn-logout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 40px;
+  padding: 8px 16px;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-logout:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
 
-/* 工程选择区域 */
+/* ========== 工程选择界面 ========== */
 .project-selection-full {
   position: relative;
   z-index: 10;
@@ -564,7 +956,10 @@ export default {
   flex-wrap: wrap;
   gap: 16px;
 }
-.tabs-wrapper { display: flex; gap: 8px; }
+.tabs-wrapper {
+  display: flex;
+  gap: 8px;
+}
 .tab-btn {
   padding: 8px 20px;
   background: transparent;
@@ -577,21 +972,28 @@ export default {
 }
 .tab-btn.active {
   color: #3b82f6;
-  background: rgba(59,130,246,0.15);
-  border: 1px solid rgba(59,130,246,0.3);
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
 }
-.search-wrapper { display: flex; gap: 12px; align-items: center; }
+.search-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
 .search-input {
-  background: rgba(0,0,0,0.4);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 40px;
   padding: 8px 16px;
   width: 240px;
   color: white;
   font-size: 13px;
 }
-.search-input:focus { outline: none; border-color: #3b82f6; }
-.btn-primary, .btn-secondary, .btn-create {
+.search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+.btn-primary, .btn-secondary {
   padding: 8px 20px;
   border-radius: 40px;
   font-size: 14px;
@@ -600,120 +1002,45 @@ export default {
   transition: all 0.2s;
   border: none;
 }
-.btn-primary, .btn-create { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; }
-.btn-secondary { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; }
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+}
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+}
+.btn-primary:hover, .btn-secondary:hover {
+  transform: translateY(-1px);
+}
 
-/* 卡片网格：一行三个 */
+/* 卡片网格 — 一行三个 */
 .projects-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 20px;
 }
 .project-card {
-   display: flex;
+  display: flex;
   flex-direction: column;
   justify-content: space-between;
   height: auto;
-  min-height: 260px;  /* 可根据内容调整 */
+  min-height: 260px;
+  padding: 20px;
+  transition: all 0.3s ease;
+  background: rgba(15, 25, 35, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
 }
 .project-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(59,130,246,0.4);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
 }
 
-/* 实例列表 - 宽度拉长，横向滚动或网格 */
-.instance-list-wide {
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 16px;
-  padding: 12px;
-  margin: 8px 0;
-  width: 100%;
-}
-
-.instances-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #cbd5e1;
-  margin-bottom: 10px;
-}
-
-
-.instance-items {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.instance-item-wide {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  padding: 8px 12px;
-  width: 100%;
-}
-
-.instance-id-wide {
-  font-family: monospace;
-  color: #fbbf24;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.instance-runner-wide {
-  color: #94a3b8;
-  font-size: 11px;
-  flex: 1;
-  margin-left: 12px;
-}
-
-.load-instance-wide {
-  background: rgba(245, 158, 11, 0.2);
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  border-radius: 20px;
-  color: #fbbf24;
-  font-size: 11px;
-  padding: 4px 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.load-instance-wide:hover {
-  background: rgba(245, 158, 11, 0.4);
-}
-
-/* 底部按钮 - 全宽 */
-.project-bottom-action {
-  margin-top: auto;
-  width: 100%;
-}
-
-.enter-btn-full:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-}
-
-.enter-btn-full:disabled {
-  background: rgba(100, 116, 139, 0.5);
-  cursor: not-allowed;
-}
-
-.enter-btn-full {
-  width: 100%;
-  padding: 10px 0;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-  border: none;
-  border-radius: 40px;
-  color: white;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-/* 左侧工程信息 */
+/* 卡片内布局 */
 .project-info-area {
   display: flex;
   gap: 16px;
@@ -722,7 +1049,7 @@ export default {
 .project-icon {
   width: 48px;
   height: 48px;
-  background: rgba(59,130,246,0.15);
+  background: rgba(59, 130, 246, 0.15);
   border-radius: 16px;
   display: flex;
   align-items: center;
@@ -756,89 +1083,550 @@ export default {
   font-size: 11px;
   color: #64748b;
 }
-.project-owner { color: #3b82f6; }
+.project-owner {
+  color: #3b82f6;
+}
 .visibility-badge {
   padding: 2px 6px;
   border-radius: 12px;
   font-size: 10px;
 }
-.visibility-badge.public { background: rgba(16,185,129,0.15); color: #10b981; }
-.visibility-badge.private { background: rgba(139,92,246,0.15); color: #a78bfa; }
-
-/* 右侧操作区 */
-.project-right-actions {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 12px;
-  min-width: 100px;
+.visibility-badge.public {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
 }
-.enter-btn {
-  padding: 6px 16px;
-  background: rgba(59, 130, 246, 0.2);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  border-radius: 40px;
-  color: #3b82f6;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
+.visibility-badge.private {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
 }
-.enter-btn:hover:not(:disabled) { background: rgba(59,130,246,0.4); transform: translateY(-1px); }
-.enter-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* 右侧实例列表（紧凑垂直） */
-.instance-list-side {
+/* 运行实例列表（横向宽区域） */
+.instance-list-wide {
   background: rgba(0, 0, 0, 0.3);
-  border-radius: 12px;
-  padding: 8px;
+  border-radius: 16px;
+  padding: 12px;
+  margin: 8px 0;
   width: 100%;
 }
-.instances-title-small {
-  font-size: 10px;
+.instances-title {
+  font-size: 12px;
+  font-weight: 600;
   color: #cbd5e1;
-  margin-bottom: 6px;
-  font-weight: 500;
+  margin-bottom: 10px;
 }
-.instance-item-small {
+.instance-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.instance-item-wide {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 10px;
-  padding: 4px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 8px 12px;
+  width: 100%;
 }
-.instance-item-small:last-child { border-bottom: none; }
-.instance-id-small {
+.instance-id-wide {
   font-family: monospace;
   color: #fbbf24;
-  font-size: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 80px;
+  font-size: 12px;
+  font-weight: 500;
 }
-.load-instance-small {
+.instance-runner-wide {
+  color: #94a3b8;
+  font-size: 11px;
+  flex: 1;
+  margin-left: 12px;
+}
+.load-instance-wide {
   background: rgba(245, 158, 11, 0.2);
   border: 1px solid rgba(245, 158, 11, 0.4);
   border-radius: 20px;
   color: #fbbf24;
-  font-size: 10px;
-  padding: 2px 8px;
+  font-size: 11px;
+  padding: 4px 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
-.load-instance-small:hover { background: rgba(245,158,11,0.4); }
+.load-instance-wide:hover {
+  background: rgba(245, 158, 11, 0.4);
+}
+
+/* 底部进入工程按钮（全宽） */
+.project-bottom-action {
+  margin-top: auto;
+  width: 100%;
+}
+.enter-btn-full {
+  width: 100%;
+  padding: 10px 0;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  border: none;
+  border-radius: 40px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.enter-btn-full:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+.enter-btn-full:disabled {
+  background: rgba(100, 116, 139, 0.5);
+  cursor: not-allowed;
+}
 
 .empty-state {
   text-align: center;
   padding: 80px;
   color: #64748b;
 }
-.empty-illustration svg { color: #334155; margin-bottom: 16px; }
+.empty-illustration svg {
+  color: #334155;
+  margin-bottom: 16px;
+}
 
-/* 弹窗样式 */
+/* 响应式 */
+@media (max-width: 1200px) {
+  .projects-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 768px) {
+  .projects-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========== 仿真设计界面样式（保持原有） ========== */
+.simulation-designer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+  z-index: 10;
+  background: transparent;
+}
+.designer-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 24px;
+  background: rgba(15, 25, 35, 0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.back-btn {
+  padding: 6px 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 40px;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.project-context {
+  flex: 1;
+}
+.project-name {
+  font-weight: bold;
+  font-size: 16px;
+  color: white;
+  margin-right: 12px;
+}
+.readonly-badge {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  margin-right: 8px;
+}
+.instance-badge {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+}
+.lock-status {
+  font-size: 12px;
+  color: #94a3b8;
+}
+.lock-icon {
+  margin-right: 4px;
+}
+
+.simulation-design {
+  flex: 1;
+  overflow: hidden;
+  padding: 10px;
+}
+.container {
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  height: 100%;
+  gap: 12px;
+  overflow: hidden;
+}
+.left-column, .middle-column, .right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+.panel {
+  background: rgba(15, 25, 35, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.panel-header {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.search-box {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 40px;
+  padding: 8px 16px;
+  margin: 12px;
+  width: calc(100% - 24px);
+  color: white;
+  font-size: 13px;
+}
+.search-box::placeholder {
+  color: #64748b;
+}
+.search-box:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+.node-item {
+  padding: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: grab;
+  transition: background 0.2s;
+}
+.node-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+.draggable-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.node-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: white;
+}
+.node-details {
+  flex: 1;
+}
+.node-name {
+  font-weight: 500;
+  color: white;
+  font-size: 13px;
+}
+.node-type {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.node-type.online { color: #10b981; }
+.node-type.offline { color: #f87171; }
+
+.design-panel {
+  background: rgba(15, 25, 35, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+.design-header {
+  background: linear-gradient(135deg, rgba(44, 62, 80, 0.6), rgba(74, 100, 145, 0.6));
+  padding: 12px 16px;
+  color: white;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.sim-control-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  flex-wrap: wrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.control-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+.control-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 6px 12px;
+  color: white;
+  font-size: 12px;
+  width: 90px;
+}
+.control-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+.control-input:disabled {
+  opacity: 0.5;
+}
+.control-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 40px;
+  padding: 6px 14px;
+  color: #cbd5e1;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.control-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+.control-btn.start {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+.control-btn.pause {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+.control-btn.stop {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+.sim-time-display {
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 4px 12px;
+  border-radius: 40px;
+  color: #fbbf24;
+  font-size: 13px;
+}
+.sim-status {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.status-idle { background: #64748b; }
+.status-running { background: #10b981; animation: pulse 1s infinite; }
+.status-paused { background: #f59e0b; }
+.status-ready { background: #3b82f6; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.design-canvas {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: auto;
+  margin: 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 280px;
+}
+.design-node {
+  position: absolute;
+  width: 140px;
+  background: rgba(20, 30, 45, 0.9);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 16px;
+  padding: 10px;
+  cursor: move;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s;
+}
+.design-node:hover {
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+}
+.design-node-header {
+  font-weight: 600;
+  font-size: 13px;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.design-node-body {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+.node-ports {
+  display: flex;
+  justify-content: space-between;
+}
+.input-port, .output-port {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+.output-port {
+  background: #f59e0b;
+}
+.connection {
+  stroke: #3b82f6;
+  stroke-width: 2;
+  fill: none;
+  filter: drop-shadow(0 0 2px rgba(59, 130, 246, 0.5));
+}
+.design-tools {
+  padding: 12px 16px;
+  display: flex;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.tool-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 40px;
+  padding: 8px 16px;
+  color: #cbd5e1;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tool-btn.primary-btn {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  border: none;
+  color: white;
+}
+.tool-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+.tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.monitor-panel {
+  background: rgba(15, 25, 35, 0.6);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 220px;
+}
+.monitor-header {
+  background: linear-gradient(135deg, rgba(142, 45, 226, 0.2), rgba(74, 0, 224, 0.2));
+  padding: 10px 16px;
+  color: white;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.monitor-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #cbd5e1;
+}
+.monitor-line {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.monitor-line.info { color: #60a5fa; }
+.monitor-line.error { color: #f87171; }
+.monitor-line.warning { color: #fbbf24; }
+.monitor-timestamp {
+  color: #6a9955;
+  margin-right: 12px;
+}
+.param-item {
+  margin-bottom: 16px;
+}
+.param-item label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.flush-btn {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.flush-btn:hover {
+  opacity: 1;
+}
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -861,31 +1649,42 @@ export default {
   max-width: 90%;
   padding: 24px;
 }
-.modal-content h3 { color: white; font-size: 20px; margin-bottom: 16px; }
+.modal-content h3 {
+  color: white;
+  font-size: 20px;
+  margin-bottom: 16px;
+}
 .modal-input {
-  background: rgba(0,0,0,0.4);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 40px;
   padding: 12px 16px;
   width: 100%;
   color: white;
   margin: 16px 0;
 }
-.modal-radio { display: flex; gap: 24px; margin: 16px 0; color: #cbd5e1; }
-.modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
-
-/* 滚动条 */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
-
-/* 响应式：屏幕较小时改为一行两个或一个 */
-@media (max-width: 1200px) {
-  .projects-grid { grid-template-columns: repeat(2, 1fr); }
+.modal-radio {
+  display: flex;
+  gap: 24px;
+  margin: 16px 0;
+  color: #cbd5e1;
 }
-@media (max-width: 768px) {
-  .projects-grid { grid-template-columns: 1fr; }
-  .project-card { flex-direction: column; }
-  .project-right-actions { align-items: stretch; }
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 </style>
