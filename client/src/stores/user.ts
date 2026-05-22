@@ -23,6 +23,13 @@ export const useUserStore = defineStore('user', () => {
   const isDesigner = computed(() => userInfo.value?.role === 0 || userInfo.value?.role === 1 || userInfo.value?.role === 2)
   const currentRole = computed(() => userInfo.value?.role || 3)
   const currentRoleName = computed(() => userInfo.value?.roleName || '观察者')
+  const roleClass = computed(() => {
+    switch (userInfo.value?.role) {
+      case 0: return 'super-admin'
+      case 1: return 'admin'
+      case 2: return 'designer'
+      default: return 'viewer'
+    } })
 
   // 方法
   const setUser = (user: UserInfo, userToken: string) => {
@@ -79,6 +86,7 @@ export const useUserStore = defineStore('user', () => {
     isDesigner,
     currentRole,
     currentRoleName,
+    roleClass,
     // 方法
     setUser,
     updateUser,

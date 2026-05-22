@@ -31,7 +31,7 @@
       <div class="header-right">
         <div class="user-info" v-if="userStore.userInfo">
           <span class="user-name">{{ userStore.userInfo.username }}</span>
-          <span class="user-role" :class="roleClass">{{ userStore.userInfo.roleName }}</span>
+          <span class="user-role" :class="userStore.roleClass">{{ userStore.userInfo.roleName }}</span>
         </div>
         <div class="stats-badge">
           <span class="stats-dot" :class="{ 'connected': wsConnected }"></span>
@@ -266,22 +266,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted,computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'  // 添加导入
 import { useUserStore } from '../stores/user'  // 添加导入
+import { formatNumber, getStatusText, formatTime, getProcessWidth ,safeNumber} from '@/utils/format'
+import { WS_BASE_URL } from '@/utils/request'
 const router = useRouter()
 const userStore = useUserStore()
-
-// 添加角色样式计算属性
-const roleClass = computed(() => {
-  if (!userStore.userInfo) return ''
-  switch (userStore.userInfo.role) {
-    case 0: return 'super-admin'
-    case 1: return 'admin'
-    case 2: return 'designer'
-    default: return 'viewer'
-  }
-})
 
 // 添加返回主页函数
 const goBack = () => {
@@ -334,37 +325,6 @@ let ws: WebSocket | null = null
 let reconnectTimer: number | null = null
 let heartbeatTimer: number | null = null
 
-// 安全地格式化数字
-const formatNumber = (value: any, decimals: number = 1): number => {
-  if (value === undefined || value === null) return 0
-  const num = parseFloat(value)
-  return isNaN(num) ? 0 : parseFloat(num.toFixed(decimals))
-}
-
-const getStatusText = (status: string) => {
-  const map: Record<string, string> = { online: '在线', offline: '离线', busy: '繁忙' }
-  return map[status] || status
-}
-
-const formatTime = (timestamp: number) => {
-  if (!timestamp) return '未知'
-  return new Date(timestamp * 1000).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })
-}
-
-const getProcessWidth = (memoryMB: any, totalGB: any = 16): number => {
-  const mb = formatNumber(memoryMB)
-  const totalMB = formatNumber(totalGB) * 1024
-  if (totalMB === 0) return 0
-  return Math.min((mb / totalMB) * 100, 100)
-}
-
 const selectNode = (node: NodeInfo) => {
   selectedNode.value = node
 }
@@ -372,11 +332,6 @@ const selectNode = (node: NodeInfo) => {
 const processNodeData = (data: any) => {
   if (!data.node_id) return
 
-  // 安全地处理数值数据
-  const safeNumber = (val: any, defaultVal: number = 0): number => {
-    const num = parseFloat(val)
-    return isNaN(num) ? defaultVal : num
-  }
 
   const nodeData: NodeInfo = {
     node_id: data.node_id,
@@ -429,10 +384,8 @@ const processNodeData = (data: any) => {
 }
 
 const connectWebSocket = () => {
-//  const wsUrl = 'ws://212.129.221.186:8088'
- const wsUrl = 'ws://192.168.156.20:8088'
-  //const wsUrl = 'ws://localhost:8088'
-  ws = new WebSocket(wsUrl)
+
+  ws = new WebSocket(WS_BASE_URL)
 
   ws.onopen = () => {
     console.log('WebSocket连接成功')
@@ -607,6 +560,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 16px;
+  color:#3b82f6;
 }
 
 .logo-icon {
@@ -635,6 +589,49 @@ html, body {
   color: #94a3b8;
   margin-top: 2px;
   display: block;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-name {
+  color: white;
+  font-size: 14px;
+}
+
+.user-role {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.user-role.super-admin {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.user-role.admin {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.user-role.designer {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.user-role.viewer {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
 }
 
 .header-right .stats-badge {

@@ -9,6 +9,7 @@ import { createPinia } from 'pinia'
 import router from './router'
 import App from './App.vue'
 import { useUserStore } from './stores/user'
+import { useCurProjectStore } from './stores/curProjectInfo'
 
 // 引入样式
 // import './style.css'

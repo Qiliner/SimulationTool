@@ -27,7 +27,7 @@
       <div class="nav-right">
         <div class="user-info" v-if="userStore.userInfo">
           <span class="user-name">{{ userStore.userInfo.username }}</span>
-          <span class="user-role" :class="roleClass">{{ userStore.userInfo.roleName }}</span>
+          <span class="user-role" :class="userStore.roleClass">{{ userStore.userInfo.roleName }}</span>
         </div>
         <button class="btn-logout" @click="handleLogout">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -66,51 +66,51 @@
 
       <!-- 目录树和文件列表 -->
       <div class="content-layout">
-       <div class="directory-tree glass-panel">
-  <div class="tree-header">
-    <span>📁 目录结构</span>
-    <button class="btn-icon-small" @click="createDirectory" title="新建目录">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-    </button>
-  </div>
-  <div class="tree-content">
-    <!-- 根目录 -->
-    <div 
-      class="directory-item root-directory"
-      :class="{ active: selectedDirId === 0 }"
-      @click="selectDirectory(0)"
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/>
-      </svg>
-      <span class="dir-name">根目录</span>
-      <span class="dir-count" :class="{ 'has-count': rootFileCount > 0 }">
-        {{ rootFileCount }}
-      </span>
-    </div>
-    
-    <!-- 子目录树 -->
-    <div v-if="rootDirectories.length > 0">
-      <DirectoryTree
-        v-for="dir in rootDirectories"
-        :key="dir.id"
-        :directory="dir"
-        :level="0"
-        :all-directories="allDirectories"
-        :file-count-map="fileCountMap"
-        :selected-dir-id="selectedDirId"
-        @select="selectDirectory"
-        @delete="deleteDirectory"
-        @rename="renameDirectory"
-      />
-    </div>
-    <div v-if="rootDirectories.length === 0 && allDirectories.length === 0" class="empty-tree">
-      暂无目录，点击"+"创建
-    </div>
-  </div>
-</div>
+        <div class="directory-tree glass-panel">
+          <div class="tree-header">
+            <span>📁 目录结构</span>
+            <button class="btn-icon-small" @click="createDirectory" title="新建目录">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
+          </div>
+          <div class="tree-content">
+            <!-- 根目录 -->
+            <div 
+              class="directory-item root-directory"
+              :class="{ active: selectedDirId === 0 }"
+              @click="selectDirectory(0)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/>
+              </svg>
+              <span class="dir-name">根目录</span>
+              <span class="dir-count" :class="{ 'has-count': rootFileCount > 0 }">
+                {{ rootFileCount }}
+              </span>
+            </div>
+            
+            <!-- 子目录树 -->
+            <div v-if="rootDirectories.length > 0">
+              <DirectoryTree
+                v-for="dir in rootDirectories"
+                :key="dir.id"
+                :directory="dir"
+                :level="0"
+                :all-directories="allDirectories"
+                :file-count-map="fileCountMap"
+                :selected-dir-id="selectedDirId"
+                @select="selectDirectory"
+                @delete="deleteDirectory"
+                @rename="renameDirectory"
+              />
+            </div>
+            <div v-if="rootDirectories.length === 0 && allDirectories.length === 0" class="empty-tree">
+              暂无目录，点击"+"创建
+            </div>
+          </div>
+        </div>
         <!-- 右侧文件列表 -->
         <div class="file-list glass-panel">
           <div class="file-header">
@@ -412,10 +412,25 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import DirectoryTree from './DirectoryTree.vue'
+import { formatFileSize } from '@/utils/format'
+import { 
+  delSoftWareInfo,
+  downloadSoftWare,
+  uploadSoftwareInfo,
+  moveModel,
+  delModel,
+  downLoadModel,
+  uploadModelInfo,
+  getSoftWareInfo,
+  getModelInfo,
+  renameDir,
+  delDir,
+  createDir,
+  getDirInfo
+} from '@/utils/api'
 
 const router = useRouter()
 const userStore = useUserStore()
-const API_BASE_URL = 'http://192.168.156.20:8080/api'
 
 // 状态
 const activeMainTab = ref<'model' | 'software'>('model')
@@ -490,12 +505,9 @@ const currentDirName = computed(() => {
 const calculateFileCounts = async () => {
   try {
     console.log('Calculating file counts for libId:', currentLibId.value)
-    const response = await fetch(`${API_BASE_URL}/model/files?libId=${currentLibId.value}`, {
-      headers: getHeaders()
-    })
-    if (response.ok) {
-      const allFiles = await response.json()
-      console.log('Received files:', allFiles.length, 'files')
+    const response = await getDirInfo(`/model/files?libId=${currentLibId.value}`)
+    if (response) {
+      const allFiles = response
       
       const newCounts: Record<number, number> = {}
       let rootCount = 0
@@ -537,11 +549,9 @@ const calculateFileCounts = async () => {
 // 加载上传时可选择的目录列表
 const loadUploadDirectories = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/model/directories?libId=${uploadModel.value.libId}`, {
-      headers: getHeaders()
-    })
-    if (response.ok) {
-      uploadDirectories.value = await response.json()
+     const response = await getDirInfo(`/model/directories?libId=${uploadModel.value.libId}`)
+    if (response) {
+      uploadDirectories.value = response
     }
   } catch (error) {
     console.error('Failed to load upload directories:', error)
@@ -551,18 +561,12 @@ const loadUploadDirectories = async () => {
 // 加载目录（扁平化存储）
 const loadDirectories = async () => {
   try {
-    console.log('Loading directories for libId:', currentLibId.value)
-    const response = await fetch(`${API_BASE_URL}/model/directories?libId=${currentLibId.value}`, {
-      headers: getHeaders()
-    })
-    if (response.ok) {
-      const dirs = await response.json()
-      console.log('Loaded directories:', dirs.length, 'directories')
+    const response = await getDirInfo(`/model/directories?libId=${currentLibId.value}`)
+    if (response) {
       // 存储为扁平列表
-      allDirectories.value = dirs
-      console.log('allDirectories updated:', allDirectories.value)
+      allDirectories.value = response
     } else {
-      console.error('Failed to load directories:', response.status)
+      console.error('Failed to load directories:', response)
     }
   } catch (error) {
     console.error('Failed to load directories:', error)
@@ -575,19 +579,12 @@ const createDirectory = async () => {
   if (!name) return
   
   try {
-    const response = await fetch(`${API_BASE_URL}/model/directories`, {
-      method: 'POST',
-      headers: {
-        ...getHeaders(),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        libId: currentLibId.value,
-        parentId: 0,
-        name
-      })
+    const response = await createDir({
+      libId: currentLibId.value,
+      parentId: 0,
+      name
     })
-    if (response.ok) {
+    if (response) {
       await loadDirectories()
       await calculateFileCounts()  // 更新文件数量统计
       alert('目录创建成功')
@@ -604,12 +601,9 @@ const createDirectory = async () => {
 const deleteDirectory = async (dir: any) => {
   if (!confirm(`确定要删除目录 "${dir.name}" 及其所有内容吗？`)) return
   
-  try {
-    const response = await fetch(`${API_BASE_URL}/model/directories/${dir.id}`, {
-      method: 'DELETE',
-      headers: getHeaders()
-    })
-    if (response.ok) {
+  try {  
+    const response = await delDir(`/model/directories/${dir.id}`)
+    if (response) {
       await loadDirectories()
       await calculateFileCounts()  // 更新文件数量统计
       if (selectedDirId.value === dir.id) {
@@ -632,15 +626,9 @@ const renameDirectory = async (dir: any) => {
   if (!newName || newName === dir.name) return
   
   try {
-    const response = await fetch(`${API_BASE_URL}/model/directories/${dir.id}`, {
-      method: 'PUT',
-      headers: {
-        ...getHeaders(),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ name: newName })
-    })
-    if (response.ok) {
+  
+    const response = await renameDir(`/model/directories/${dir.id}`, { name: newName })
+    if (response) {
       await loadDirectories()
       await calculateFileCounts()  // 更新文件数量统计
       alert('重命名成功')
@@ -676,29 +664,6 @@ const modelLibs = ref([
   { id: 3, name: '产品库' }
 ])
 
-const roleClass = computed(() => {
-  if (!userStore.userInfo) return ''
-  switch (userStore.userInfo.role) {
-    case 0: return 'super-admin'
-    case 1: return 'admin'
-    case 2: return 'designer'
-    default: return 'viewer'
-  }
-})
-
-const getHeaders = () => {
-  return {
-    'Authorization': `Bearer ${userStore.token}`
-  }
-}
-
-const formatFileSize = (bytes: number) => {
-  if (!bytes) return '-'
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i]
-}
-
 const formatDate = (timestamp: number) => {
   if (!timestamp) return '-'
   return new Date(timestamp * 1000).toLocaleString('zh-CN')
@@ -707,14 +672,12 @@ const formatDate = (timestamp: number) => {
 const loadFiles = async () => {
   try {
     const url = selectedDirId.value === 0 
-      ? `${API_BASE_URL}/model/files?libId=${currentLibId.value}`
-      : `${API_BASE_URL}/model/files?libId=${currentLibId.value}&dirId=${selectedDirId.value}`
+      ? `/model/files?libId=${currentLibId.value}`
+      : `/model/files?libId=${currentLibId.value}&dirId=${selectedDirId.value}`
     
-    const response = await fetch(url, {
-      headers: getHeaders()
-    })
-    if (response.ok) {
-      currentFiles.value = await response.json()
+    const response = await getModelInfo(url)
+    if (response) {
+      currentFiles.value = response
     }
   } catch (error) {
     console.error('Failed to load files:', error)
@@ -724,91 +687,14 @@ const loadFiles = async () => {
 
 const loadSoftware = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/software`, {
-      headers: getHeaders()
-    })
-    if (response.ok) {
-      softwareList.value = await response.json()
+    const response = await getSoftWareInfo()
+    if (response) {
+      softwareList.value = response
     }
   } catch (error) {
     console.error('Failed to load software:', error)
   }
 }
-
-// // 创建目录
-// const createDirectory = async () => {
-//   const name = prompt('请输入目录名称')
-//   if (!name) return
-  
-//   try {
-//     const response = await fetch(`${API_BASE_URL}/model/directories`, {
-//       method: 'POST',
-//       headers: {
-//         ...getHeaders(),
-//         'Content-Type': 'application/json'
-//       },
-//       body: JSON.stringify({
-//         libId: currentLibId.value,
-//         parentId: 0,
-//         name
-//       })
-//     })
-//     if (response.ok) {
-//       await loadDirectories()
-//     } else {
-//       alert('创建目录失败')
-//     }
-//   } catch (error) {
-//     console.error('Failed to create directory:', error)
-//     alert('创建目录失败')
-//   }
-// }
-
-// // 删除目录
-// const deleteDirectory = async (dir: any) => {
-//   if (!confirm(`确定要删除目录 "${dir.name}" 及其所有内容吗？`)) return
-  
-//   try {
-//     const response = await fetch(`${API_BASE_URL}/model/directories/${dir.id}`, {
-//       method: 'DELETE',
-//       headers: getHeaders()
-//     })
-//     if (response.ok) {
-//       await loadDirectories()
-//       await loadFiles()
-//     } else {
-//       alert('删除目录失败')
-//     }
-//   } catch (error) {
-//     console.error('Failed to delete directory:', error)
-//     alert('删除目录失败')
-//   }
-// }
-
-// // 重命名目录
-// const renameDirectory = async (dir: any) => {
-//   const newName = prompt('请输入新名称', dir.name)
-//   if (!newName || newName === dir.name) return
-  
-//   try {
-//     const response = await fetch(`${API_BASE_URL}/model/directories/${dir.id}`, {
-//       method: 'PUT',
-//       headers: {
-//         ...getHeaders(),
-//         'Content-Type': 'application/json'
-//       },
-//       body: JSON.stringify({ name: newName })
-//     })
-//     if (response.ok) {
-//       await loadDirectories()
-//     } else {
-//       alert('重命名失败')
-//     }
-//   } catch (error) {
-//     console.error('Failed to rename directory:', error)
-//     alert('重命名失败')
-//   }
-// }
 
 // 选择目录
 const selectDirectory = async (dirId: number) => {
@@ -887,34 +773,28 @@ const uploadModelFile = async () => {
   }
   
   try {
-    const response = await fetch(`${API_BASE_URL}/model/files`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${userStore.token}`
-        // 不要设置 Content-Type，让浏览器自动设置 multipart/form-data boundary
-      },
-      body: formData
-    })
     
-    const responseText = await response.text()
-    console.log('Response status:', response.status)
-    console.log('Response body:', responseText)
+    const response = await uploadModelInfo(formData)
     
-    if (response.ok) {
+    // const responseText = await response.text()
+    // console.log('Response status:', response.status)
+    // console.log('Response body:', responseText)
+    
+    if (response) {
       alert('上传成功')
       closeUploadDialog()
-    await calculateFileCounts()  // 更新文件数量统计
-    await loadFiles()  // 刷新文件列表
-    await loadDirectories()  // 刷新目录
+      await calculateFileCounts()  // 更新文件数量统计
+      await loadFiles()  // 刷新文件列表
+      await loadDirectories()  // 刷新目录
     } else {
-      let errorMsg = responseText
-      try {
-        const errorJson = JSON.parse(responseText)
-        errorMsg = errorJson.error || errorJson.message || responseText
-      } catch (e) {
-        // 不是 JSON 格式
-      }
-      alert(`上传失败: ${errorMsg}`)
+      // let errorMsg = responseText
+      // try {
+      //   const errorJson = JSON.parse(responseText)
+      //   errorMsg = errorJson.error || errorJson.message || responseText
+      // } catch (e) {
+      //   // 不是 JSON 格式
+      // }
+      alert(`上传失败`)
     }
   } catch (error) {
     console.error('Upload error:', error)
@@ -927,11 +807,9 @@ const uploadModelFile = async () => {
 // 下载模型
 const downloadModel = async (file: any) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/model/files/${file.id}/download`, {
-      headers: getHeaders()
-    })
     
-    if (response.ok) {
+    const response = await downLoadModel(`/model/files/${file.id}/download`)  
+    if (response) {
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -955,11 +833,8 @@ const deleteModelFile = async (file: any) => {
   if (!confirm(`确定要删除模型 "${file.name}" 吗？`)) return
   
   try {
-    const response = await fetch(`${API_BASE_URL}/model/files/${file.id}`, {
-      method: 'DELETE',
-      headers: getHeaders()
-    })
-    if (response.ok) {
+    const response = await delModel(`/model/files/${file.id}`)
+    if (response) {
       await calculateFileCounts()  // 更新文件数量统计
       await loadFiles()
       alert('删除成功')
@@ -984,18 +859,20 @@ const openMigrateDialog = async (file: any) => {
   migrateTarget.value = { libId: 0, dirId: 0 }
   
   // 加载目标库的目录
-  if (migrateTarget.value.libId) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/model/directories?libId=${migrateTarget.value.libId}`, {
-        headers: getHeaders()
-      })
-      if (response.ok) {
-        migrateDirectories.value = await response.json()
-      }
-    } catch (error) {
-      console.error('Failed to load directories:', error)
-    }
-  }
+  // if (migrateTarget.value.libId) {
+  //   try {
+  //     const response = await fetch(`${API_BASE_URL}/model/directories?libId=${migrateTarget.value.libId}`, {
+  //       headers: userStore.getAuthHeader()
+  //     })
+  //     if (response.ok) {
+  //       migrateDirectories.value = await response.json()
+  //       console.log(migrateDirectories.value)
+  //     }
+  //     console.log(migrateDirectories.value)
+  //   } catch (error) {
+  //     console.error('Failed to load directories:', error)
+  //   }
+  // }
   
   showMigrateDialog.value = true
 }
@@ -1009,26 +886,20 @@ const confirmMigrate = async () => {
   isMigrating.value = true
   
   try {
-    const response = await fetch(`${API_BASE_URL}/model/files/${migratingModel.value.id}/migrate`, {
-      method: 'POST',
-      headers: {
-        ...getHeaders(),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        targetLibId: migrateTarget.value.libId,
-        targetDirId: migrateTarget.value.dirId
-      })
+   
+    const response = await moveModel(`/model/files/${migratingModel.value.id}/migrate`,{
+      targetLibId: migrateTarget.value.libId,
+      targetDirId: migrateTarget.value.dirId
     })
+    console.log('Migrate response:', response)
     
-    if (response.ok) {
+    if (response) {
       alert('迁移成功')
       closeMigrateDialog()
       await calculateFileCounts()  // 更新源库和目标库的文件数量统计
       await loadFiles()
     } else {
-      const error = await response.json()
-      alert(error.error || '迁移失败')
+      alert('迁移失败')
     }
   } catch (error) {
     console.error('Failed to migrate:', error)
@@ -1086,28 +957,20 @@ const uploadSoftwareFile = async () => {
   formData.append('description', uploadSoftware.value.description || '')
   
   try {
-    const response = await fetch(`${API_BASE_URL}/software`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${userStore.token}`
-      },
-      body: formData
-    })
-    
-    const responseText = await response.text()
-    console.log('Software upload response:', response.status, responseText)
-    
-    if (response.ok) {
+
+    const response = await uploadSoftwareInfo(formData)
+    console.log('Upload software response:', response)
+    if (response) {
       alert('上传成功')
       closeSoftwareUploadDialog()
       await loadSoftware()
     } else {
-      let errorMsg = responseText
-      try {
-        const errorJson = JSON.parse(responseText)
-        errorMsg = errorJson.error || responseText
-      } catch (e) {}
-      alert(`上传失败: ${errorMsg}`)
+      // let errorMsg = responseText
+      // try {
+      //   const errorJson = JSON.parse(responseText)
+      //   errorMsg = errorJson.error || responseText
+      // } catch (e) {}
+      alert(`上传失败`)
     }
   } catch (error) {
     console.error('Failed to upload software:', error)
@@ -1119,11 +982,9 @@ const uploadSoftwareFile = async () => {
 
 const downloadSoftware = async (sw: any) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/software/${sw.id}/download`, {
-      headers: getHeaders()
-    })
-    
-    if (response.ok) {
+    const response = await downloadSoftWare(`/software/${sw.id}/download`)
+   
+    if (response) {
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -1151,11 +1012,8 @@ const deleteSoftware = async (sw: any) => {
   if (!confirm(`确定要删除软件 "${sw.name}" 吗？`)) return
   
   try {
-    const response = await fetch(`${API_BASE_URL}/software/${sw.id}`, {
-      method: 'DELETE',
-      headers: getHeaders()
-    })
-    if (response.ok) {
+    const response = await delSoftWareInfo(`/software/${sw.id}`)
+    if (response) {
       await loadSoftware()
       alert('删除成功')
     } else {
@@ -1200,7 +1058,7 @@ const handleLogout = () => {
 
 // 初始化
 onMounted(() => {
-userStore.loadUserFromStorage()
+  userStore.loadUserFromStorage()
   loadDirectories()
   calculateFileCounts()  // 计算文件数量统计
   loadFiles()
@@ -1313,7 +1171,7 @@ watch(rootDirectories, (newVal) => {
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
-  color: #94a3b8;
+  color:#3b82f6
 }
 
 .back-icon:hover {
@@ -1491,6 +1349,54 @@ watch(rootDirectories, (newVal) => {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
+}
+
+.directory-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+  color: #e2e8f0;
+}
+
+.directory-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.directory-item.active {
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.directory-item svg {
+  flex-shrink: 0;
+  color: #38bdf8;
+}
+
+.dir-name {
+  flex: 1;
+  font-size: 14px;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dir-count {
+  min-width: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
+}
+
+.dir-count.has-count {
+  background: rgba(16, 185, 129, 0.18);
+  color: #a7f3d0;
 }
 
 .empty-tree {
@@ -1716,10 +1622,11 @@ watch(rootDirectories, (newVal) => {
   justify-content: flex-end;
   padding: 16px 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
+} 
 
 .form-group {
   margin-bottom: 20px;
+  /* display: flex; */
 }
 
 .form-group label {

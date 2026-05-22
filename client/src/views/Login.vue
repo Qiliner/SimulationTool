@@ -61,6 +61,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { login } from '@/utils/api'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -68,8 +69,6 @@ const username = ref('')
 const password = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
-
-const API_BASE_URL = 'http://192.168.156.20:8080/api'
 
 const handleLogin = async () => {
   if (!username.value || !password.value) {
@@ -81,27 +80,21 @@ const handleLogin = async () => {
   errorMessage.value = ''
 
   try {
-    const response = await fetch(`${API_BASE_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: username.value,
-        password: password.value
-      })
+    const response = await login({
+      username: username.value,
+      password: password.value
     })
 
-    const data = await response.json()
-
-    if (response.ok && data.success) {
-      if (!data.user || typeof data.user !== 'object') {
+    if (response.success) {
+      if (!response.user || typeof response.user !== 'object') {
         errorMessage.value = '登录成功但未返回有效用户信息，请联系管理员。'
         return
       }
       // 更新用户store状态
-      userStore.setUser(data.user, data.token)
+      userStore.setUser(response.user, response.token || "")
       router.push('/')
     } else {
-      errorMessage.value = data.error || '登录失败'
+      errorMessage.value = response.error || '登录失败'
     }
   } catch (error) {
     console.error('Login error:', error)

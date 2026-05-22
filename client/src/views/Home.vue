@@ -22,7 +22,7 @@
       <div class="nav-right">
         <div class="user-info" v-if="userStore.userInfo">
           <span class="user-name">{{ userStore.userInfo.username }}</span>
-          <span class="user-role" :class="roleClass">{{ userStore.userInfo.roleName }}</span>
+          <span class="user-role" :class="userStore.roleClass">{{ userStore.userInfo.roleName }}</span>
         </div>
         <div class="user-info" v-else>
           <span class="user-name">未登录</span>
@@ -107,10 +107,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import UserManagement from './UserManagement.vue'
+import UserManagement from './UserManageMent.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -118,17 +118,6 @@ const showUserManagement = ref(false)
 
 // 直接使用 userStore，不需要 currentUser computed
 // 在模板中直接使用 userStore.userInfo
-
-// 角色样式类
-const roleClass = computed(() => {
-  if (!userStore.userInfo) return ''
-  switch (userStore.userInfo.role) {
-    case 0: return 'super-admin'
-    case 1: return 'admin'
-    case 2: return 'designer'
-    default: return 'viewer'
-  }
-})
 
 const handleLogout = () => {
   userStore.logout()

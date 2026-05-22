@@ -6,7 +6,8 @@ import ProjectList from '../views/ProjectList.vue'
 import ModelDesigner from '../views/ModelDesigner.vue'
 import NodeMonitor  from '../views/NodeMonitor.vue'
 import ModelManage from '../views/ModelManage.vue'
-import SimulationRun from '../views/SimulationRun.vue' 
+import SimuDesign from '../views/SimuDesign.vue'
+import SimulationRun from '@/views/SimulationRun.vue'
 
 const routes = [
   {
@@ -40,18 +41,26 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-  path: '/model-manage',
-  name: 'ModelManage',
-  component: ModelManage,
-  meta: { requiresAuth: true }
+    path: '/model-manage',
+    name: 'ModelManage',
+    component: ModelManage,
+    meta: { requiresAuth: true }
   },
   {
-    path: '/simulation',  // 新增仿真运行路由
+    path: '/simulation',
     name: 'SimulationRun',
-    component: SimulationRun,
-    meta: { requiresAuth: true }
+    //component: SimulationRun,
+    meta: { requiresAuth: true },
+    children: [
+      { path: '', component: SimulationRun },
+      {
+        path: ':id',
+        name: 'SimuDesign',
+        component: SimuDesign,
+        meta: { requiresAuth: true },
+      }
+    ]
   }
-
 ]
 
 const router = createRouter({
@@ -61,15 +70,15 @@ const router = createRouter({
 
 router.beforeEach((to, from) => {
   const userStore = useUserStore()
-  
+
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     return '/login'
   }
-  
+
   if (to.path === '/login' && userStore.isLoggedIn) {
     return '/'
   }
-  
+
   return true
 })
 

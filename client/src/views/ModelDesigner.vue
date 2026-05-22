@@ -418,7 +418,7 @@
               </optgroup>
             </select>
           </div>
-          <div class="form-group" v-if="currentEditingMember.type === 'sequence'">
+          <div class="form-group" v-if="currentEditingMember?.type === 'sequence'">
             <label>子类型 (sequence&lt;子类型&gt;)</label>
             <select v-model="currentEditingMember.subType" class="form-select">
               <option value="">请选择子类型</option>
@@ -522,6 +522,17 @@
 import { ref, reactive, toRaw, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import {  API_BASE_URL,WS_BASE_URL  } from "@/utils/request"
+import { 
+  saveModelProjectData,
+  generateModelCodel,
+  getModel,
+  getDataType,
+  saveDataTypes,
+  delDataTypes,
+  saveModelDesign,
+  delModelDesign
+ } from '@/utils/design'
 
 interface DataTypeMember {
   displayName: string
@@ -534,7 +545,7 @@ interface DataTypeMember {
   description: string
 }
 
-interface DataType {
+interface DataType { 
   id: number | null
   name: string
   description: string
@@ -562,19 +573,8 @@ interface Model {
   uuid?: string
 }
 
-const API_BASE_URL = 'http://192.168.156.20:8080/api'
-const WS_URL = 'ws://192.168.156.20:8081'
-
 const router = useRouter()
 const userStore = useUserStore()
-
-const getHeaders = () => {
-    return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.token}`,
-        'X-Project-Id': currentProject.value?.id?.toString() || ''
-    }
-}
 
 const dataTypes = ref<DataType[]>([])
 let nextDataTypeId = 1
@@ -708,11 +708,10 @@ const getInterfaceTypeRef = (dataTypeName: string): string => {
 
 const fetchDataTypesFromServer = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/datatypes`, {
-      headers: getHeaders()
-    })
-    if (!response.ok) throw new Error('Failed to fetch data types')
-    const data = await response.json()
+    
+    const response = await getDataType(currentProject.value?.id?.toString() || '')
+    if (!response) throw new Error('Failed to fetch data types')
+    const data = response
     dataTypes.value = data
     if (data.length > 0) {
       const maxId = Math.max(...data.map((dt: DataType) => dt.id || 0))
@@ -727,11 +726,9 @@ const fetchDataTypesFromServer = async () => {
 
 const fetchModelsFromServer = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/models`, {
-      headers: getHeaders()
-    })
-    if (!response.ok) throw new Error('Failed to fetch models')
-    const data = await response.json()
+    const response = await getModel(currentProject.value?.id?.toString() || '')
+    if (!response) throw new Error('Failed to fetch models')
+    const data = response
     models.value = data
     if (data.length > 0) {
       const maxId = Math.max(...data.map((m: Model) => m.id || 0))
@@ -749,15 +746,15 @@ const saveDataTypeToServer = async (dataType: DataType): Promise<DataType | null
     const isNew = !dataType.id
     const url = isNew ? `${API_BASE_URL}/datatypes` : `${API_BASE_URL}/datatypes/${dataType.id}`
     const method = isNew ? 'POST' : 'PUT'
+  
+    const response = await saveDataTypes(url,
+          currentProject.value?.id?.toString() || '',
+          method,
+          dataType
+        )
     
-    const response = await fetch(url, {
-      method,
-      headers: getHeaders(),
-      body: JSON.stringify(dataType)
-    })
-    
-    if (!response.ok) throw new Error(`Failed to ${isNew ? 'create' : 'update'} data type`)
-    const result = await response.json()
+    if (!response) throw new Error(`Failed to ${isNew ? 'create' : 'update'} data type`)
+    const result = response
     return result.data || dataType
   } catch (error) {
     console.error('Failed to save data type:', error)
@@ -768,11 +765,8 @@ const saveDataTypeToServer = async (dataType: DataType): Promise<DataType | null
 
 const deleteDataTypeFromServer = async (id: number): Promise<boolean> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/datatypes/${id}`, {
-      method: 'DELETE',
-      headers: getHeaders()
-    })
-    if (!response.ok) throw new Error('Failed to delete data type')
+    const response = await delDataTypes(`/datatypes/${id}`, currentProject.value?.id?.toString() || '')
+    if (!response) throw new Error('Failed to delete data type')
     return true
   } catch (error) {
     console.error('Failed to delete data type:', error)
@@ -787,14 +781,11 @@ const saveModelToServer = async (model: Model): Promise<Model | null> => {
     const url = isNew ? `${API_BASE_URL}/models` : `${API_BASE_URL}/models/${model.id}`
     const method = isNew ? 'POST' : 'PUT'
     
-    const response = await fetch(url, {
-      method,
-      headers: getHeaders(),
-      body: JSON.stringify(model)
-    })
+    const response = await saveModelDesign(url
+    , currentProject.value?.id?.toString() || '', method, model)
     
-    if (!response.ok) throw new Error(`Failed to ${isNew ? 'create' : 'update'} model` + model.id)
-    const result = await response.json()
+    if (!response) throw new Error(`Failed to ${isNew ? 'create' : 'update'} model` + model.id)
+    const result = response
     return result.data || model
   } catch (error) {
     console.error('Failed to save model:', error)
@@ -805,37 +796,13 @@ const saveModelToServer = async (model: Model): Promise<Model | null> => {
 
 const deleteModelFromServer = async (id: number): Promise<boolean> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/models/${id}`, {
-      method: 'DELETE',
-      headers: getHeaders()
-    })
-    if (!response.ok) throw new Error('Failed to delete model')
+    const response = await delModelDesign(`/models/${id}`, currentProject.value?.id?.toString() || '')
+    if (!response) throw new Error('Failed to delete model')
     return true
   } catch (error) {
     console.error('Failed to delete model:', error)
     alert('删除模型失败')
     return false
-  }
-}
-
-const syncAllToServer = async () => {
-  isLoading.value = true
-  try {
-    const response = await fetch(`${API_BASE_URL}/sync`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
-        dataTypes: dataTypes.value,
-        models: models.value
-      })
-    })
-    if (!response.ok) throw new Error('Failed to sync data')
-    alert('同步成功！')
-  } catch (error) {
-    console.error('Failed to sync:', error)
-    alert('同步失败！')
-  } finally {
-    isLoading.value = false
   }
 }
 
@@ -885,7 +852,7 @@ const handleWebSocketMessage = (message: any) => {
 
 const setupWebSocket = () => {
   try {
-    ws = new WebSocket(WS_URL)
+    ws = new WebSocket(WS_BASE_URL)
     
     ws.onopen = () => {
       console.log('WebSocket connected')
@@ -1665,15 +1632,11 @@ const generateCode = async () => {
         xml += `  </service>\n`
         xml += `</root>`
         
-          generateProgress.value = '正在发送请求到服务器...'
+        generateProgress.value = '正在发送请求到服务器...'
         // 发送请求并处理ZIP文件下载
-        const response = await fetch('http://192.168.156.20:8080/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/xml' },
-            body: xml
-        })
+        const response = await generateModelCodel(xml)
         
-        if (response.ok) {
+        if (response) {
            generateProgress.value = '正在下载代码包...'
             // 获取文件名
             const contentDisposition = response.headers.get('Content-Disposition')
@@ -1701,22 +1664,22 @@ const generateCode = async () => {
             selectedModelForGenerate.value = ''
             selectedLanguage.value = 'python'
         } else {
-            const errorText = await response.text()
-            let errorMsg = '代码生成失败'
-            try {
-                const errorJson = JSON.parse(errorText)
-                errorMsg = errorJson.error || errorMsg
-            } catch {
-                errorMsg = errorText || errorMsg
-            }
-            alert(`代码生成失败: ${errorMsg}`)
+            // const errorText = await response.text()
+            // let errorMsg = '代码生成失败'
+            // try {
+            //     const errorJson = JSON.parse(errorText)
+            //     errorMsg = errorJson.error || errorMsg
+            // } catch {
+            //     errorMsg = errorText || errorMsg
+            // }
+            alert(`代码生成失败`)
         }
     } catch (error) {
         console.error('请求失败:', error)
         alert('连接服务器失败，请检查网络连接')
     } finally {
         isGenerating.value = false
-         generateProgress.value = ''
+        generateProgress.value = ''
     }
 }
 
@@ -1736,56 +1699,6 @@ const initializeData = async () => {
     } finally {
         isLoading.value = false
     }
-}
-
-const initSampleData = () => {
-  const vector3: DataType = {
-    id: nextDataTypeId++,
-    name: 'Vector3',
-    description: '三维向量',
-    uuid: generateUUID(),
-    members: [
-      { displayName: 'X坐标', type: 'real32', range: '-inf~inf', varName: 'x', defaultValue: '0', unit: 'm', description: 'X轴分量' },
-      { displayName: 'Y坐标', type: 'real32', range: '-inf~inf', varName: 'y', defaultValue: '0', unit: 'm', description: 'Y轴分量' },
-      { displayName: 'Z坐标', type: 'real32', range: '-inf~inf', varName: 'z', defaultValue: '0', unit: 'm', description: 'Z轴分量' }
-    ]
-  }
-  const pose: DataType = {
-    id: nextDataTypeId++,
-    name: 'Pose',
-    description: '位姿（位置+方向）',
-    uuid: generateUUID(),
-    members: [
-      { displayName: '位置', type: 'Vector3', range: '', varName: 'position', defaultValue: '', unit: 'm', description: '位置坐标' },
-      { displayName: '朝向四元数', type: 'string', range: '', varName: 'orientation', defaultValue: '0,0,0,1', unit: '', description: '四元数' },
-      { displayName: '点云数据', type: 'sequence', subType: 'real32', range: '', varName: 'pointCloud', defaultValue: '', unit: '', description: '点云数据' }
-    ]
-  }
-  dataTypes.value.push(vector3, pose)
-
-  const robotModel: Model = {
-    id: nextModelId++,
-    name: 'RobotController',
-    displayName: '机器人控制器',
-    uuid: generateUUID(),
-    paramInterfaces: [
-      { name: 'max_speed', dataType: 'real32', displayName: '最大速度', description: '线速度上限' }
-    ],
-    inputInterfaces: [
-      { name: 'cmd_vel', dataType: 'Vector3', topic: '/cmd_vel', displayName: '速度指令', description: '线速度与角速度' }
-    ],
-    outputInterfaces: [
-      { name: 'odom', dataType: 'Pose', topic: '/odom', displayName: '里程计数据', description: '当前位姿' }
-    ],
-    initInterfaces: [
-      { name: 'init', dataType: 'void', displayName: '初始化', description: '模型初始化' }
-    ],
-    eventInterfaces: [
-      { name: 'run', dataType: 'void', displayName: '运行', description: '主运行循环' },
-      { name: 'battery_low', dataType: 'bool', displayName: '低电量事件', description: '电量低于阈值触发' }
-    ]
-  }
-  models.value.push(robotModel)
 }
 
 // 在顶部添加
@@ -1823,21 +1736,15 @@ const loadProjectData = async () => {
 
 // 保存工程数据
 const saveProjectData = async () => {
-    if (!currentProject.value) return
-    
-    const projectData = {
-        dataTypes: dataTypes.value,
-        models: models.value
-    }
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/projects/${currentProject.value.id}/save`, {
-            method: 'POST',
-            headers: getHeaders(),
-            body: JSON.stringify(projectData)
+    if (!currentProject.value) return  
+    try { 
+        const response = await saveModelProjectData(`/projects/${currentProject.value.id}/save`,
+          currentProject.value?.id?.toString() || '', {
+          dataTypes: dataTypes.value,
+          models: models.value
         })
         
-        if (response.ok) {
+        if (response) {
             console.log('Project saved successfully')
         } else {
             console.error('Failed to save project')

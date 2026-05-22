@@ -33,7 +33,7 @@
                 <td>{{ user.username }}</td>
                 <td>{{ user.email || '-' }}</td>
                 <td>
-                  <span :class="['role-badge', getRoleClass(user.role)]">
+                  <span :class="['role-badge', userStore.roleClass]">
                     {{ user.roleName }}
                   </span>
                 </td>
@@ -111,11 +111,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '../stores/user'
+import { formatDate } from '@/utils/format'
+import { saveUserInfo,getUserInfo,delUserInfo } from '@/utils/api'
 
 const emit = defineEmits(['close', 'user-changed'])
-
 const userStore = useUserStore()
-const API_BASE_URL = 'http://192.168.156.20:8080/api'
 const users = ref<any[]>([])
 const isLoading = ref(false)
 const showUserDialog = ref(false)
@@ -136,40 +136,16 @@ const canManageUsers = computed(() => {
   return userStore.isSuperAdmin || userStore.isAdmin
 })
 
-const getHeaders = () => {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${userStore.token}`
-  }
-}
-
 const fetchUsers = async () => {
   if (!canManageUsers.value) return
   
   try {
-    const response = await fetch(`${API_BASE_URL}/users`, {
-      headers: getHeaders()
-    })
-    if (response.ok) {
-      users.value = await response.json()
+    const response = await getUserInfo()
+    if (response) {
+      users.value = response
     }
   } catch (error) {
     console.error('Failed to fetch users:', error)
-  }
-}
-
-const formatDate = (timestamp: string) => {
-  if (!timestamp || timestamp === '0') return '-'
-  const date = new Date(parseInt(timestamp) * 1000)
-  return date.toLocaleDateString('zh-CN')
-}
-
-const getRoleClass = (role: number) => {
-  switch (role) {
-    case 0: return 'super-admin'
-    case 1: return 'admin'
-    case 2: return 'designer'
-    default: return 'viewer'
   }
 }
 
@@ -208,9 +184,7 @@ const saveUser = async () => {
   isLoading.value = true
 
   try {
-    const url = isEditing.value 
-      ? `${API_BASE_URL}/users/${editingUser.value.id}`
-      : `${API_BASE_URL}/users`
+    const url = isEditing.value ? `/users/${editingUser.value.id}` : `/users`
     const method = isEditing.value ? 'PUT' : 'POST'
     
     const data: any = {
@@ -223,21 +197,14 @@ const saveUser = async () => {
     if (editingUser.value.password) {
       data.password = editingUser.value.password
     }
-
-    const response = await fetch(url, {
-      method,
-      headers: getHeaders(),
-      body: JSON.stringify(data)
-    })
-
-    if (response.ok) {
+    const response = await saveUserInfo(url, method, data)
+    if (response) {
       alert(isEditing.value ? '用户更新成功' : '用户创建成功')
       closeUserDialog()
       fetchUsers()
       emit('user-changed')
     } else {
-      const error = await response.json()
-      alert(error.error || '操作失败')
+      alert('操作失败')
     }
   } catch (error) {
     console.error('Failed to save user:', error)
@@ -257,18 +224,14 @@ const deleteUser = async (user: any) => {
   }
   
   try {
-    const response = await fetch(`${API_BASE_URL}/users/${user.id}`, {
-      method: 'DELETE',
-      headers: getHeaders()
-    })
+    const response = await delUserInfo(`/users/${user.id}`, 'DELETE')
     
-    if (response.ok) {
+    if (response) {
       alert('用户删除成功')
       fetchUsers()
       emit('user-changed')
     } else {
-      const error = await response.json()
-      alert(error.error || '删除失败')
+      alert('删除失败')
     }
   } catch (error) {
     console.error('Failed to delete user:', error)

@@ -28,7 +28,7 @@
       <div class="nav-right">
         <div class="user-info" v-if="userStore.userInfo">
           <span class="user-name">{{ userStore.userInfo.username }}</span>
-          <span class="user-role" :class="roleClass">{{ userStore.userInfo.roleName }}</span>
+          <span class="user-role" :class="userStore.roleClass">{{ userStore.userInfo.roleName }}</span>
         </div>
         <button class="btn-logout" @click="handleLogout">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -151,10 +151,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { formatDate } from '@/utils/format'
+import { saveProjectInfo, delProjectInfo,getProjectInfo } from '@/utils/api'
 
 const router = useRouter()
 const userStore = useUserStore()
-const API_BASE_URL = 'http://192.168.156.20:8080/api'
 
 const projects = ref<any[]>([])
 const isLoading = ref(false)
@@ -168,16 +169,6 @@ const editingProject = ref({
   name: '',
   description: '',
   isPublic: false
-})
-
-const roleClass = computed(() => {
-  if (!userStore.userInfo) return ''
-  switch (userStore.userInfo.role) {
-    case 0: return 'super-admin'
-    case 1: return 'admin'
-    case 2: return 'designer'
-    default: return 'viewer'
-  }
 })
 
 // 过滤工程：按可见性 + 搜索关键词
@@ -196,23 +187,13 @@ const filteredProjects = computed(() => {
   return list
 })
 
-const getHeaders = () => ({
-  'Content-Type': 'application/json',
-  'Authorization': `Bearer ${userStore.token}`
-})
-
-const formatDate = (timestamp: number) => {
-  if (!timestamp) return '-'
-  const date = new Date(timestamp * 1000)
-  return date.toLocaleDateString('zh-CN')
-}
 
 const fetchProjects = async () => {
   isLoading.value = true
   try {
-    const response = await fetch(`${API_BASE_URL}/projects`, { headers: getHeaders() })
-    if (response.ok) {
-      projects.value = await response.json()
+    const response = await getProjectInfo()
+    if (response) {
+      projects.value = response
     }
   } catch (error) {
     console.error('Failed to fetch projects:', error)
@@ -250,22 +231,15 @@ const saveProject = async () => {
   }
   isLoading.value = true
   try {
-    const url = isEditing.value 
-      ? `${API_BASE_URL}/projects/${editingProject.value.id}`
-      : `${API_BASE_URL}/projects`
+    const url = isEditing.value ? `/projects/${editingProject.value.id}` : `/projects`
     const method = isEditing.value ? 'PUT' : 'POST'
-    const response = await fetch(url, {
-      method,
-      headers: getHeaders(),
-      body: JSON.stringify(editingProject.value)
-    })
-    if (response.ok) {
+    const response = await saveProjectInfo(url, method, editingProject.value)
+    if (response) {
       alert(isEditing.value ? '工程更新成功' : '工程创建成功')
       closeProjectDialog()
       fetchProjects()
     } else {
-      const error = await response.json()
-      alert(error.error || '操作失败')
+      alert('操作失败')
     }
   } catch (error) {
     console.error('Failed to save project:', error)
@@ -279,16 +253,13 @@ const deleteProject = async (project: any) => {
   if (!confirm(`确定要删除工程 "${project.name}" 吗？此操作不可恢复。`)) return
   isLoading.value = true
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/${project.id}`, {
-      method: 'DELETE',
-      headers: getHeaders()
-    })
-    if (response.ok) {
+    const response = await delProjectInfo(`/projects/${project.id}`, 'DELETE')
+
+    if (response) {
       alert('工程删除成功')
       fetchProjects()
     } else {
-      const error = await response.json()
-      alert(error.error || '删除失败')
+      alert('删除失败')
     }
   } catch (error) {
     console.error('Failed to delete project:', error)
@@ -299,6 +270,7 @@ const deleteProject = async (project: any) => {
 }
 
 const goBack = () => router.push('/')
+
 const handleLogout = () => {
   userStore.logout()
   router.push('/login')
