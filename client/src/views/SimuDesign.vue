@@ -70,8 +70,10 @@
           title="初始化参数配置"
           :append-to-body="true"
           @close="drawerVisible = false"
+          size="600"
         >
-          <MembersConfig :selected-node="selectedNode" />
+          <!-- <MembersConfig :selected-node="selectedNode" /> -->
+           <Test></Test>
         </el-drawer>
       </div>
   </div>
@@ -95,6 +97,8 @@ import 'element-plus/dist/index.css'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
+
+import Test from '@/components/Test.vue'
 
 const centerCanvasRef = ref<InstanceType<typeof CenterCanvas> | null>(null)
 const selectedNode = ref<Node | null>(null)
