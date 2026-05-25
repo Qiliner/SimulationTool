@@ -1,28 +1,3 @@
-//#include "HttpServer.h"
-
-//
-
-//int main()
-
-//{
-
-//	HttpServer s;
-
-//	
-
-//	s.startServer("192.168.156.20", 8088);
-
-//	while (1)
-
-//	{
-
-//
-
-//	}
-
-//	return 0;
-
-//}
 
 #include <boost/filesystem.hpp>
 
