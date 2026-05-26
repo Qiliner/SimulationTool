@@ -144,3 +144,170 @@ export function parseXMLToModels(xmlString: string): ParsedModel[] {
   }
   return models
 }
+
+
+
+/*解析初始化参数属性*/
+
+import type { BasicType, FieldMeta, FieldMetaWithProps, MemberAttr, StructFieldMeta, TypeDefinition } from './types';
+
+const basicTypes: Set<string> = new Set([
+  'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32',
+  'int64', 'uint64', 'real32', 'real64', 'bool', 'string'
+]);
+
+export function isBasicType(typeName: string): boolean {
+  return basicTypes.has(typeName);
+}
+
+// 解析XML字符串，返回类型映射和根成员列表
+export function parseXmlConfig(xmlStr: string): {
+  typesMap: Map<string, TypeDefinition>;
+  rootMembers: MemberAttr[];
+  topLevelMembers: { name: string; type: string }[];
+} {
+ const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+  const typesMap = new Map<string, TypeDefinition>();
+  
+  const typeNodes = doc.querySelectorAll('types > type');
+  typeNodes.forEach((typeNode) => {
+    const info = typeNode.querySelector('info');
+    const uuid = info?.getAttribute('uuid') || '';
+    const name = info?.getAttribute('name') || '';
+    const members: MemberAttr[] = [];
+    const memberNodes = typeNode.querySelectorAll('member');
+    memberNodes.forEach((member) => {
+      members.push({
+        name: member.getAttribute('name') || '',
+        display_name: member.getAttribute('display_name') || member.getAttribute('name') || '',
+        type: member.getAttribute('type') || '',
+        note: member.getAttribute('note') || '',
+        array: member.getAttribute('array') || '',
+        sequence_type: member.getAttribute('sequence_type') || '',
+        elem_type: member.getAttribute('elem_type') || '',
+        unit_name: member.getAttribute('unit_name') || '',
+      });
+    });
+    typesMap.set(uuid, { uuid, name, members });
+  });
+
+  const modelNode = doc.querySelector('models > model');
+  if (!modelNode) return { typesMap, rootMembers: [], topLevelMembers: [] };
+  const membersNode = modelNode.querySelector('members');
+  if (!membersNode) return { typesMap, rootMembers: [], topLevelMembers: [] };
+  const rootMemberNodes = membersNode.querySelectorAll('member');
+  const rootMembers: MemberAttr[] = [];
+  const topLevelMembers: { name: string; type: string }[] = [];
+  rootMemberNodes.forEach((member) => {
+    const name = member.getAttribute('name') || '';
+    const type = member.getAttribute('type') || '';
+    topLevelMembers.push({ name, type });
+    rootMembers.push({
+      name,
+      display_name: member.getAttribute('display_name') || name,
+      type,
+      note: member.getAttribute('note') || '',
+      array: member.getAttribute('array') || '',
+      sequence_type: member.getAttribute('sequence_type') || '',
+      elem_type: member.getAttribute('elem_type') || '',
+      unit_name: member.getAttribute('unit_name') || '',
+    });
+  });
+  return { typesMap, rootMembers, topLevelMembers };
+}
+
+// 根据成员属性构建字段元数据
+export function buildFieldMeta(member: MemberAttr, typesMap: Map<string, TypeDefinition>): FieldMeta {
+  const typeName = member.type;
+  const isFixedArray = member.array && member.array !== '';
+  const isSequence = typeName === 'sequence';
+
+  if (isSequence) {
+    const elementTypeId = member.sequence_type || member.elem_type;
+    if (!elementTypeId) throw new Error('sequence missing element type');
+    let elementMeta: FieldMeta;
+    if (isBasicType(elementTypeId)) {
+      elementMeta = { kind: 'basic', typeName: elementTypeId as BasicType };
+    } else {
+      const structDef = typesMap.get(elementTypeId);
+      if (structDef) elementMeta = buildStructMeta(structDef, typesMap);
+      else elementMeta = { kind: 'basic', typeName: 'string' };
+    }
+    return { kind: 'sequence', typeName: 'sequence', elementMeta };
+  }
+
+  if (isFixedArray) {
+    const arraySize = parseInt(member.array, 10);
+    let elementMeta: FieldMeta;
+    if (isBasicType(typeName)) {
+      elementMeta = { kind: 'basic', typeName: typeName as BasicType };
+    } else {
+      const structDef = typesMap.get(typeName);
+      if (structDef) elementMeta = buildStructMeta(structDef, typesMap);
+      else elementMeta = { kind: 'basic', typeName: 'string' };
+    }
+    return { kind: 'fixedArray', typeName: 'array', arraySize, elementMeta };
+  }
+
+  if (isBasicType(typeName)) {
+    return { kind: 'basic', typeName: typeName as BasicType };
+  }
+
+  const structDef = typesMap.get(typeName);
+  if (structDef) {
+    return buildStructMeta(structDef, typesMap);
+  }
+  // fallback
+  return { kind: 'basic', typeName: 'string' };
+}
+
+// 构建结构体元数据（带字段名、展示名等）
+export function buildStructMeta(structDef: TypeDefinition, typesMap: Map<string, TypeDefinition>): StructFieldMeta {
+  const fields: FieldMetaWithProps[] = [];
+  for (const member of structDef.members) {
+    const fieldMeta = buildFieldMeta(member, typesMap);
+    fields.push({
+      ...fieldMeta,
+      name: member.name,
+      displayName: member.display_name || member.name,
+      note: member.note,
+      unit: member.unit_name,
+    });
+  }
+  return {
+    kind: 'struct',
+    typeName: structDef.name,
+    fields,
+  };
+}
+
+// 生成默认值
+export function getDefaultValue(meta: FieldMeta): any {
+  if (meta.kind === 'basic') {
+    const t = meta.typeName;
+    if (t === 'bool') return false;
+    if (t === 'string') return '';
+    if (t.startsWith('int') || t.startsWith('uint')) return 0;
+    if (t.startsWith('real')) return 0.0;
+    return '';
+  }
+  if (meta.kind === 'struct') {
+    const obj: Record<string, any> = {};
+    for (const field of meta.fields) {
+      obj[field.name] = getDefaultValue(field);
+    }
+    return obj;
+  }
+  if (meta.kind === 'fixedArray') {
+    const arr = [];
+    for (let i = 0; i < meta.arraySize; i++) {
+      arr.push(getDefaultValue(meta.elementMeta));
+    }
+    return arr;
+  }
+  if (meta.kind === 'sequence') {
+    return [];
+  }
+  return null;
+}

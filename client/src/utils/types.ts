@@ -37,3 +37,74 @@ export interface CustomEvent {
   name: string;
   content: string;
 }
+
+
+
+export type BasicType = 
+  | 'int8' | 'uint8' | 'int16' | 'uint16'
+  | 'int32' | 'uint32' | 'int64' | 'uint64'
+  | 'real32' | 'real64'
+  | 'bool' | 'string';
+
+export interface BasicFieldMeta {
+  kind: 'basic';
+  typeName: BasicType;
+}
+
+export interface StructFieldMeta {
+  kind: 'struct';
+  typeName: string;
+  fields: FieldMetaWithProps[];
+}
+
+export interface FixedArrayFieldMeta {
+  kind: 'fixedArray';
+  typeName: 'array';
+  arraySize: number;
+  elementMeta: FieldMeta;
+}
+
+export interface SequenceFieldMeta {
+  kind: 'sequence';
+  typeName: 'sequence';
+  elementMeta: FieldMeta;
+}
+
+export type FieldMeta = BasicFieldMeta | StructFieldMeta | FixedArrayFieldMeta | SequenceFieldMeta;
+
+export type FieldMetaWithProps = FieldMeta & {
+  name: string;
+  displayName: string;
+  note?: string;
+  unit?: string;
+};
+
+export interface TypeDefinition {
+  uuid: string;
+  name: string;
+  members: MemberAttr[];
+}
+
+export interface MemberAttr {
+  name: string;
+  display_name: string;
+  type: string;
+  note: string;
+  array: string;
+  sequence_type: string;
+  elem_type: string;
+  unit_name: string;
+}
+
+export interface RootField {
+  meta: FieldMeta;
+  value: any;
+  path: string;
+  label: string;
+  note: string;
+}
+
+export interface UpdateEvent {
+  path: string;
+  value: any;
+}

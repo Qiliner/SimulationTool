@@ -1,4 +1,3 @@
-// components/MembersConfig.vue
 <template>
   <div class="members-config">
     <div v-if="!selectedNode" class="empty-tip">请选中画布中的节点</div>
