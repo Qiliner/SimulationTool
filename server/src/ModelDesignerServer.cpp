@@ -2045,7 +2045,7 @@ void ModelDesignerServer::setupTaskManagerRoutes()
 			res.set_content(R"({"error": "Invalid token"})", "application/json");
 			return;
 		}
-		auto tasks = Database::getInstance().getAllTasks(currentUser.id);
+		auto tasks = Database::getInstance().getTasksForUser(currentUser.id);
 		json result = json::array();
 		for (const auto& t : tasks) {
 			int id = std::get<0>(t);
@@ -2053,6 +2053,7 @@ void ModelDesignerServer::setupTaskManagerRoutes()
 			std::string description = std::get<2>(t);
 			int ownerId = std::get<3>(t);
 			int updatedAt = std::get<5>(t);
+			int isPublic = std::get<6>(t);
 
 			// 获取该工程下的运行实例
 			auto instances = m_taskManager.getRunningInstances(name);
@@ -2072,6 +2073,7 @@ void ModelDesignerServer::setupTaskManagerRoutes()
 				{"description", description},
 				{"ownerId", ownerId},
 				{"updatedAt", updatedAt},
+				{ "isPublic", isPublic? "true":"false"},
 				{"runningInstances", instancesArr}
 				});
 		}
@@ -2098,8 +2100,9 @@ void ModelDesignerServer::setupTaskManagerRoutes()
 			std::string name = data["name"];
 			std::string description = data.value("description", "");
 			std::string content = data.value("content", "");
+			bool isPublic = data.value("isPublic", false);
 			std::string log;
-			if (m_taskManager.createTask(name, description, content, currentUser.id, log) == 0) {
+			if (m_taskManager.createTask(name, description, content, currentUser.id, isPublic, log) == 0) {
 				res.status = 201;
 				res.set_content(R"({"message": "Task created"})", "application/json");
 			}
@@ -2132,7 +2135,8 @@ void ModelDesignerServer::setupTaskManagerRoutes()
 		std::string name = data.value("name", "");
 		std::string description = data.value("description", "");
 		std::string content = data.value("content", "");
-		if (Database::getInstance().updateTask(taskId, name, description, content)) {
+		bool isPublic = data.value("isPublic", false);
+		if (Database::getInstance().updateTask(taskId, name, description, content,isPublic)) {
 			res.set_content(R"({"message": "Task updated"})", "application/json");
 		}
 		else {

@@ -428,6 +428,7 @@ bool Database::createTaskTables() {
             description TEXT,
             owner_id INTEGER NOT NULL,
             content TEXT,  -- 存储工程设计数据（JSON或XML）
+            is_public INTEGER DEFAULT 0,
             created_at INTEGER DEFAULT (strftime('%s', 'now')),
             updated_at INTEGER DEFAULT (strftime('%s', 'now')),
             FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -1937,9 +1938,10 @@ std::vector<Software> Database::getAllSoftware() {
     sqlite3_finalize(stmt);
     return result;
 }
-bool Database::insertTask(const std::string& name, const std::string& description, int ownerId, const std::string& content) {
+bool Database::insertTask(const std::string& name, const std::string& description,
+    int ownerId, const std::string& content, bool isPublic) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    const std::string sql = "INSERT INTO tasks (name, description, owner_id, content) VALUES (?, ?, ?, ?)";
+    const std::string sql = "INSERT INTO tasks (name, description, owner_id, content,is_public) VALUES (?, ?, ?, ?, ?)";
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) return false;
@@ -1947,21 +1949,23 @@ bool Database::insertTask(const std::string& name, const std::string& descriptio
     sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 3, ownerId);
     sqlite3_bind_text(stmt, 4, content.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 5, isPublic ? 1 : 0);
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return rc == SQLITE_DONE;
 }
 
-bool Database::updateTask(int taskId, const std::string& name, const std::string& description, const std::string& content) {
+bool Database::updateTask(int taskId, const std::string& name, const std::string& description, const std::string& content, bool isPublic) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    const std::string sql = "UPDATE tasks SET name = ?, description = ?, content = ?, updated_at = strftime('%s', 'now') WHERE id = ?";
+    const std::string sql = "UPDATE tasks SET name = ?, description = ?, content = ?, is_public = ?, updated_at = strftime('%s', 'now') WHERE id = ?";
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) return false;
     sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, content.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 4, taskId);
+    sqlite3_bind_int(stmt, 4, isPublic ? 1 : 0);
+    sqlite3_bind_int(stmt, 5, taskId);
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return rc == SQLITE_DONE;
@@ -1977,6 +1981,29 @@ bool Database::deleteTask(int taskId) {
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return rc == SQLITE_DONE;
+}
+
+// 获取用户可见的任务列表
+std::vector<std::tuple<int, std::string, std::string, int, std::string, int, bool>> Database::getTasksForUser(int userId) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::vector<std::tuple<int, std::string, std::string, int, std::string, int, bool>> result;
+    const std::string sql = "SELECT id, name, description, owner_id, content, updated_at, is_public FROM tasks WHERE owner_id = ? OR is_public = 1 ORDER BY updated_at DESC";
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) return result;
+    sqlite3_bind_int(stmt, 1, userId);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int id = sqlite3_column_int(stmt, 0);
+        std::string name = (const char*)sqlite3_column_text(stmt, 1);
+        std::string desc = (const char*)sqlite3_column_text(stmt, 2);
+        int ownerId = sqlite3_column_int(stmt, 3);
+        std::string content = (const char*)sqlite3_column_text(stmt, 4);
+        int updatedAt = sqlite3_column_int(stmt, 5);
+        bool isPublic = sqlite3_column_int(stmt, 6) == 1;
+        result.emplace_back(id, name, desc, ownerId, content, updatedAt, isPublic);
+    }
+    sqlite3_finalize(stmt);
+    return result;
 }
 
 std::vector<std::tuple<int, std::string, std::string, int, std::string, int>> Database::getAllTasks(int userId) {

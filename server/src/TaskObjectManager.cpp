@@ -197,21 +197,6 @@ void TaskObjectManager::loadTasksFromDB() {
 	}
 }
 
-bool TaskObjectManager::saveTaskContent(const std::string& taskName, const std::string& content) {
-	// 首先查找 taskId
-	int taskId = -1;
-	// 需要从数据库查询 taskId by name，或者改造 insertTask 返回 id
-	auto tasks = Database::getInstance().getAllTasks(-1);
-	for (const auto& t : tasks) {
-		if (std::get<1>(t) == taskName) {
-			taskId = std::get<0>(t);
-			break;
-		}
-	}
-	if (taskId == -1) return false;
-	return Database::getInstance().updateTask(taskId, taskName, "", content);
-}
-
 std::string TaskObjectManager::getTaskContent(const std::string& taskName) {
 	auto tasks = Database::getInstance().getAllTasks(-1);
 	for (const auto& t : tasks) {
@@ -236,12 +221,12 @@ void TaskObjectManager::loadTasksFromDB(int userId) {
 
 int TaskObjectManager::createTask(
 	const std::string& name, const std::string& description,
-	const std::string& content, int ownerId, std::string& log) {
+	const std::string& content, int ownerId,bool isPublic, std::string& log) {
 	if (Database::getInstance().getTaskIdByName(name) != -1) {
 		log = "Task name already exists: " + name;
 		return -1;
 	}
-	if (!Database::getInstance().insertTask(name, description, ownerId, content)) {
+	if (!Database::getInstance().insertTask(name, description, ownerId, content,isPublic)) {
 		log = "Database insert failed";
 		return -1;
 	}
@@ -254,13 +239,13 @@ int TaskObjectManager::createTask(
 
 bool TaskObjectManager::updateTask(
 	const std::string& name, const std::string& description,
-	const std::string& content, std::string& log) {
+	const std::string& content,bool isPublic, std::string& log) {
 	int taskId = Database::getInstance().getTaskIdByName(name);
 	if (taskId == -1) {
 		log = "Task not found: " + name;
 		return false;
 	}
-	return Database::getInstance().updateTask(taskId, name, description, content);
+	return Database::getInstance().updateTask(taskId, name, description, content, isPublic);
 }
 
 bool TaskObjectManager::deleteTask(const std::string& name, std::string& log) {

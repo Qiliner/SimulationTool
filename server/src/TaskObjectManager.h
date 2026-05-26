@@ -88,8 +88,6 @@ public:
 
 	// 新增：从数据库加载所有任务
 	void loadTasksFromDB();
-	// 保存任务内容到数据库
-	bool saveTaskContent(const std::string& taskName, const std::string& content);
 	// 获取任务内容
 	std::string getTaskContent(const std::string& taskName);
 	// 创建实例（同时存入数据库）
@@ -99,8 +97,8 @@ public:
 
 	// 添加数据库同步方法
 	void loadTasksFromDB(int userId);
-	int createTask(const std::string& name, const std::string& description, const std::string& content, int ownerId, std::string& log);
-	bool updateTask(const std::string& name, const std::string& description, const std::string& content, std::string& log);
+	int createTask(const std::string& name, const std::string& description, const std::string& content, int ownerId, bool isPublic, std::string& log);
+	bool updateTask(const std::string& name, const std::string& description, const std::string& content,bool isPublic, std::string& log);
 	bool deleteTask(const std::string& name, std::string& log);
 	void removeInstance(const std::string& name);
 	std::vector<std::tuple<std::string, int>> getRunningInstances(const std::string& taskName) const;

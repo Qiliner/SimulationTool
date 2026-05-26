@@ -231,9 +231,10 @@ public:
     //创建仿真任务表
     bool createTaskTables();
     // Task (工程) 相关
-    bool insertTask(const std::string& name, const std::string& description, int ownerId, const std::string& content);
-    bool updateTask(int taskId, const std::string& name, const std::string& description, const std::string& content);
+    bool insertTask(const std::string& name, const std::string& description, int ownerId, const std::string& content, bool isPublic = false);
+    bool updateTask(int taskId, const std::string& name, const std::string& description, const std::string& content, bool isPublic);
     bool deleteTask(int taskId);
+    std::vector<std::tuple<int, std::string, std::string, int, std::string, int, bool>> getTasksForUser(int userId);
     std::vector<std::tuple<int, std::string, std::string, int, std::string, int>> getAllTasks(int userId); // id,name,description,ownerId,content,updatedAt
     std::tuple<bool, std::string> getTaskContent(int taskId); // 成功标志, content
     int getTaskIdByName(const std::string& name);
