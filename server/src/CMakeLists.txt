@@ -12,19 +12,26 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 # 将源代码添加到此项目的可执行文件。
 
-add_executable (server main.cpp ModelDesignerServer.cpp Database.cpp ZipUtils.cpp TaskObjectManager.cpp)
+add_executable (server 
+  main.cpp
+  ModelDesignerServer.cpp
+  Database.cpp 
+  ZipUtils.cpp 
+  TaskObjectManager.cpp
+  )
+
+set_property(TARGET server PROPERTY CXX_STANDARD 17)
+set_property(TARGET server PROPERTY CXX_STANDARD_REQUIRED ON)
 
 #boost库
-if(NOT DEFINED BOOST_ROOT)
-    set(BOOST_ROOT "D:/lin/DevTool/boost_1_80_0")
-endif()
+set(BOOST_ROOT "D:/lin/DevTool/boost_1_80_0") # 这里可以设置默认的 BOOST_ROOT 路径，
 find_package(Boost REQUIRED COMPONENTS system filesystem)
 if(Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIRS})
     target_link_libraries(server ${Boost_LIBRARIES})
+elseif(NOT DEFINED BOOST_ROOT)
+    message("Boost not found. Please set BOOST_ROOT to the Boost installation directory.")
 endif()
-
-find_package(Boost REQUIRED COMPONENTS filesystem)
 
 target_link_libraries(server Boost::filesystem sqlite3)
 
@@ -34,7 +41,7 @@ target_link_libraries(server
 )
 if(MSVC)
     target_link_directories(server PRIVATE "../external/lib/win64-msvc")
-    target_compile_options(server PRIVATE /bigobj /utf-8)
+    target_compile_options(server PRIVATE /bigobj /utf-8 /wd4828)
     add_definitions(-D_UNICODE -DUNICODE)
     add_compile_options(/std:c++17)
 endif()
@@ -48,11 +55,8 @@ include_directories(
 "../external/include/rapidxml"
 "../external/include/sqlite3"
 "../external/include/websocketpp"
+"../external/include/nlohmann"
 "../external/include/TaskServer")
-
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET server PROPERTY CXX_STANDARD 20)
-endif()
 
 # TODO: 如有需要，请添加测试并安装目标。
 
