@@ -170,6 +170,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useCurProjectStore } from "@/stores/curProjectInfo"
+import { createSimProject,getSimProjectList } from '@/utils/task'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -259,26 +260,28 @@ function refreshProjects() {
   curProject.projects = mockData
 }
 
-function createProject() {
+const createProject = async () => {
   if (!newProjectName.value.trim()) {
     alert('请输入工程名称')
     return
   }
-  const newId = (curProject.projects.length ? Math.max(...curProject.projects.map((p: any) => p.id), 0) : 0) + 1
-  const newProject = {
-    id: newId,
-    name: newProjectName.value,
-    visibility: newProjectVisibility.value,
-    creator: currentUser.value,
-    createTime: new Date().toISOString().slice(0, 10),
-    lockedBy: null,
-    lockedAt: null,
-    runningInstances: [],
-    designData: null
-  }
-  curProject.projects.push(newProject)
+
+  const response =await createSimProject({
+    name:newProjectName.value,
+    description:"",
+    content:"",
+    visibility:newProjectVisibility.value
+  })
+
+  console.log(response)
+  
   showCreateProject.value = false
   newProjectName.value = ''
+}
+
+const getProjets = async ()=>{
+  const  response = await getSimProjectList();
+  console.log(response) 
 }
 
 function getLockTip(project: any) {
@@ -324,6 +327,10 @@ function loadInstance(project: any, instance: any) {
     params: { id: project.id }
   })
 }
+
+onMounted(()=>{
+  getProjets()
+})
 
 </script>
 
